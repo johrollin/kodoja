@@ -168,10 +168,10 @@ def fastqc_trim(out_dir, file1, trim_minlen, threads, adapter_file, file2=False)
 
 
 def kraken_classify(out_dir, kraken_file1, threads, user_format, kraken_db, kraken_file2=False,
-                    quick_minhits=False, preload=False):
+                    quick_minhits=False):
     """Kraken classification.
 
-    Add appropiate switches for kraken command (format, preload, minimum hits,
+    Add appropiate switches for kraken command (format, minimum hits,
     if paired or single end) and call
     kraken command, followed by kraken-translate to get full taxonomy for each
     sequence based on thir sequence id (Seq_tax: d__superkingdom, k__kingdom,
@@ -186,10 +186,7 @@ def kraken_classify(out_dir, kraken_file1, threads, user_format, kraken_db, krak
     elif user_format == "fasta":
         format_switch = " --fasta-input"
 
-    if preload:
-        kraken_command = "kraken --preload "
-    else:
-        kraken_command = "kraken "
+    kraken_command = "kraken "
 
     kraken_command += "--threads " + str(threads) + " --db " + kraken_db + format_switch
 

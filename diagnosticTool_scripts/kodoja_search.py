@@ -69,8 +69,6 @@ parser.add_argument('-a', '--trim_adapt', type=str, default=False,
                     help='Illumina adapter sequence file')
 parser.add_argument('-q', '--kraken_quick', type=int, default=False,
                     help='Number of minium hits by Kraken')
-parser.add_argument('-p', '--kraken_preload', action='store_true',
-                    help='Kraken preload database')
 parser.add_argument('-c', '--kaiju_score', type=int, default=85,
                     help='Kaju alignment score')
 parser.add_argument('-l', '--kaiju_minlen', type=int, default=15,
@@ -105,7 +103,6 @@ with open(log_filename, "w") as log_file:
                    "Kraken parameters:\n"
                    "kraken database = %s\n"
                    "quick_minhits = %s\n"
-                   "preload = %s\n"
                    "Kaiju parameters:\n"
                    "args.kaiju_db = %s\n"
                    "kaiju_minlen = %i\n"
@@ -113,7 +110,7 @@ with open(log_filename, "w") as log_file:
                    "kaiju_mismatch = %i\n"
                    % (args.read1, args.read2, args.output_dir,
                       args.threads, args.host_subset, args.trim_minlen,
-                      args.kraken_db, args.kraken_quick, args.kraken_preload,
+                      args.kraken_db, args.kraken_quick,
                       args.kaiju_db, args.kaiju_minlen, args.kaiju_score,
                       args.kaiju_mismatch))
 
@@ -166,7 +163,7 @@ def main():
     log("Starting Kraken classification\n")
     kraken_classify(args.output_dir, kraken_file1, args.threads,
                     args.data_format, args.kraken_db, kraken_file2,
-                    quick_minhits=args.kraken_quick, preload=args.kraken_preload)
+                    quick_minhits=args.kraken_quick)
 
     t3 = time.time()
 
