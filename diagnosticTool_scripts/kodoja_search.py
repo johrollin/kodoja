@@ -75,6 +75,8 @@ parser.add_argument('-l', '--kaiju_minlen', type=int, default=15,
                     help='Kaju minimum length')
 parser.add_argument('-i', '--kaiju_mismatch', type=int, default=1,
                     help='Kaju allowed mismatches')
+parser.add_argument('-mm', '--memory', type=int, default=False,
+                    help='kraken --memory-mapping for big database')
 args = parser.parse_args()
 
 # Check that dirs have "/" at the end
@@ -108,11 +110,12 @@ with open(log_filename, "w") as log_file:
                    "kaiju_minlen = %i\n"
                    "kaiju_score = %i\n"
                    "kaiju_mismatch = %i\n"
+                   "memory = %s\n"
                    % (args.read1, args.read2, args.output_dir,
                       args.threads, args.host_subset, args.trim_minlen,
                       args.kraken_db, args.kraken_quick,
                       args.kaiju_db, args.kaiju_minlen, args.kaiju_score,
-                      args.kaiju_mismatch))
+                      args.kaiju_mismatch, args.memory))
 
 
 # TODO: Review this and consider using Python standard library's logging module
@@ -163,7 +166,7 @@ def main():
     log("Starting Kraken classification\n")
     kraken_classify(args.output_dir, kraken_file1, args.threads,
                     args.data_format, args.kraken_db, kraken_file2,
-                    quick_minhits=args.kraken_quick)
+                    quick_minhits=args.kraken_quick, args.memory)
 
     t3 = time.time()
 

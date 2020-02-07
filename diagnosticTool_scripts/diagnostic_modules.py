@@ -168,10 +168,10 @@ def fastqc_trim(out_dir, file1, trim_minlen, threads, adapter_file, file2=False)
 
 
 def kraken_classify(out_dir, kraken_file1, threads, user_format, kraken_db, kraken_file2=False,
-                    quick_minhits=False):
+                    quick_minhits=False, memory):
     """Kraken classification.
 
-    Add appropiate switches for kraken command (format, minimum hits,
+    Add appropiate switches for kraken command (format, minimum hits, memory
     if paired or single end) and call
     kraken command, followed by kraken-translate to get full taxonomy for each
     sequence based on thir sequence id (Seq_tax: d__superkingdom, k__kingdom,
@@ -186,10 +186,13 @@ def kraken_classify(out_dir, kraken_file1, threads, user_format, kraken_db, krak
     elif user_format == "fasta":
         format_switch = " --fasta-input"
 
-    kraken_command = "kraken "
+    kraken_command = "kraken2 "
 
-    kraken_command += "--threads " + str(threads) + " --db " + kraken_db + format_switch
+    kraken_command += "--threads " + str(threads) + "--report kraken.report --db " + kraken_db + format_switch
 
+    if memory:
+        kraken_command += " --memory-mapping "
+        
     if quick_minhits:
         kraken_command += " --quick --min-hits " + str(quick_minhits)
 
@@ -200,9 +203,9 @@ def kraken_classify(out_dir, kraken_file1, threads, user_format, kraken_db, krak
         kraken_command += " " + kraken_file1 + " > " + os.path.join(out_dir, "kraken_table.txt")
 
     subprocess.check_call(kraken_command, shell=True)
-    subprocess.check_call("kraken-translate --mpa-format --db " + kraken_db +
-                          " " + os.path.join(out_dir, "kraken_table.txt") + " > " +
-                          os.path.join(out_dir, "kraken_labels.txt"), shell=True)
+    #subprocess.check_call("kraken-translate --mpa-format --db " + kraken_db +
+    #                      " " + os.path.join(out_dir, "kraken_table.txt") + " > " +
+    #                      os.path.join(out_dir, "kraken_labels.txt"), shell=True)
 
 
 def format_result_table(out_dir, data_table, data_labels, table_colNames):
