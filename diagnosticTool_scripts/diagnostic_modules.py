@@ -167,7 +167,7 @@ def fastqc_trim(out_dir, file1, trim_minlen, threads, adapter_file, file2=False)
                               " -o " + out_dir, shell=True)
 
 
-def kraken_classify(out_dir, kraken_file1, threads, user_format, kraken_db, kraken_file2=False,
+def kraken_classify(out_dir, kraken_file1, threads, kraken_db, kraken_file2=False,
                     quick_minhits=False, memory):
     """Kraken classification.
 
@@ -181,14 +181,10 @@ def kraken_classify(out_dir, kraken_file1, threads, user_format, kraken_db, krak
     (or unclassified) and kraken_labels file witha row for each sequence that was
     classified by kraken with full taxonomy.
     """
-    if user_format == "fastq":
-        format_switch = " --fastq-input"
-    elif user_format == "fasta":
-        format_switch = " --fasta-input"
 
     kraken_command = "kraken2 "
 
-    kraken_command += "--threads " + str(threads) + "--report kraken.report --db " + kraken_db + format_switch
+    kraken_command += "--threads " + str(threads) + "--report kraken.report --db " + kraken_db 
 
     if memory:
         kraken_command += " --memory-mapping "

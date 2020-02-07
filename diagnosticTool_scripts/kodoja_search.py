@@ -165,7 +165,7 @@ def main():
     # Kraken classification
     log("Starting Kraken classification\n")
     kraken_classify(args.output_dir, kraken_file1, args.threads,
-                    args.data_format, args.kraken_db, kraken_file2,
+                    args.kraken_db, kraken_file2,
                     quick_minhits=args.kraken_quick, args.memory)
 
     t3 = time.time()
