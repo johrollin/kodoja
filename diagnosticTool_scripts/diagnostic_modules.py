@@ -167,8 +167,8 @@ def fastqc_trim(out_dir, file1, trim_minlen, threads, adapter_file, file2=False)
                               " -o " + out_dir, shell=True)
 
 
-def kraken_classify(out_dir, kraken_file1, threads, kraken_db, kraken_file2=False,
-                    quick_minhits=False, memory):
+def kraken_classify(out_dir, kraken_file1, threads, kraken_db, memory, kraken_file2=False,
+                    quick_minhits=False):
     """Kraken classification.
 
     Add appropiate switches for kraken command (format, minimum hits, memory
@@ -184,7 +184,7 @@ def kraken_classify(out_dir, kraken_file1, threads, kraken_db, kraken_file2=Fals
 
     kraken_command = "kraken2 "
 
-    kraken_command += "--threads " + str(threads) + "--report kraken.report --db " + kraken_db 
+    kraken_command += "--threads " + str(threads) + " --report kraken.report --db " + kraken_db 
 
     if memory:
         kraken_command += " --memory-mapping "
@@ -216,9 +216,16 @@ def format_result_table(out_dir, data_table, data_labels, table_colNames):
     seq_data = pd.read_csv(os.path.join(out_dir, data_table),
                            sep="\t", header=None, names=table_colNames,
                            index_col=False)
-    seq_labelData = pd.read_csv(os.path.join(out_dir, data_labels),
+    try:
+        seq_labelData = pd.read_csv(os.path.join(out_dir, data_labels),
                                 sep="\t", header=None,
                                 names=label_colNames)
+    # kraken2 doesn't have label file anymore
+    except FileNotFoundError:
+        pass
+        #seq_result = pd.DataFrame(columns=["Seq_ID", "Seq_tax"])
+        seq_labelData = pd.DataFrame(columns=["Seq_ID", "Seq_tax"])
+
     seq_result = pd.merge(seq_data, seq_labelData, on='Seq_ID', how='outer')
     return seq_result
 
@@ -284,7 +291,7 @@ def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_
     subprocess.check_call("gzip " + os.path.join(out_dir, "kraken_FormattedTable.txt"),
                           shell=True)
     os.remove(os.path.join(out_dir, "kraken_table.txt"))
-    os.remove(os.path.join(out_dir, "kraken_labels.txt"))
+    #os.remove(os.path.join(out_dir, "kraken_labels.txt"))
 
 
 def kaiju_classify(kaiju_file1, threads, out_dir, kaiju_db, kaiju_minlen, kraken_db,
@@ -297,7 +304,8 @@ def kaiju_classify(kaiju_file1, threads, out_dir, kaiju_db, kaiju_minlen, kraken
     used for this analysis.
 
     """
-    kaiju_nodes = kraken_db + "taxonomy/nodes.dmp"
+    #kaiju_nodes = kraken_db + "taxonomy/nodes.dmp"
+    kaiju_nodes = kaiju_db + "/../nodes.dmp"
     kaiju_fmi = kaiju_db + "kaiju_library.fmi"
     # kaiju_names = kaiju_db + "names.dmp"
 
@@ -315,9 +323,9 @@ def kaiju_classify(kaiju_file1, threads, out_dir, kaiju_db, kaiju_minlen, kraken
         kaiju_command += " -j " + kaiju_file2
 
     subprocess.check_call(kaiju_command, shell=True)
-    subprocess.check_call("kraken-translate --mpa-format --db " + kraken_db + " " +
-                          os.path.join(out_dir, "kaiju_table.txt") + " > " +
-                          os.path.join(out_dir, "kaiju_labels.txt"), shell=True)
+    #subprocess.check_call("kraken-translate --mpa-format --db " + kraken_db + " " +
+    #                      os.path.join(out_dir, "kaiju_table.txt") + " > " +
+    #                      os.path.join(out_dir, "kaiju_labels.txt"), shell=True)
 
     for dirs, sub_dirs, files in os.walk(out_dir):
         # Only delete file when it's in out_put
@@ -373,7 +381,7 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
     kodoja["Seq_ID"] = kodoja["Seq_ID"].map(ids1)
 
     os.remove(os.path.join(out_dir, "kaiju_table.txt"))
-    os.remove(os.path.join(out_dir, "kaiju_labels.txt"))
+    #os.remove(os.path.join(out_dir, "kaiju_labels.txt"))
     os.remove(os.path.join(out_dir, "kraken_VRL.txt"))
 
     kodoja['combined_result'] = kodoja.kraken_tax_ID[kodoja['kraken_tax_ID'] == kodoja['kaiju_tax_ID']]
@@ -402,6 +410,8 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
         identified 'Grapevine_leafroll-associated_virus_4' the label for which is
         'd__Viruses|f__Closteroviridae|g__Ampelovirus|s__Grapevine_leafroll-associated_virus_4').
         """
+        
+        
         kraken_class = dict(kodoja_data['kraken_tax_ID'].value_counts())
         kraken_levels = pd.Series(kodoja_data.kraken_seq_tax.values,
                                   index=kodoja_data.kraken_tax_ID).to_dict()

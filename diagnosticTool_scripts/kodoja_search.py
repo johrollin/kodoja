@@ -150,8 +150,9 @@ def main():
     if args.data_format == "fastq":
         # fasta files cannot be QC'd - only for fastq files
         log("Starting FASTQ read trimming\n")
-        fastqc_trim(args.output_dir, initial_file1, args.trim_minlen, args.threads,
-                    args.trim_adapt, initial_file2)
+        //TODO reactivate
+        #fastqc_trim(args.output_dir, initial_file1, args.trim_minlen, args.threads,
+        #            args.trim_adapt, initial_file2)
     else:
         kraken_file1 = kaiju_file1 = initial_file1
         kraken_file2 = kaiju_file2 = initial_file2
@@ -165,8 +166,8 @@ def main():
     # Kraken classification
     log("Starting Kraken classification\n")
     kraken_classify(args.output_dir, kraken_file1, args.threads,
-                    args.kraken_db, kraken_file2,
-                    quick_minhits=args.kraken_quick, args.memory)
+                    args.kraken_db, args.memory, kraken_file2,
+                    args.kraken_quick)
 
     t3 = time.time()
 
