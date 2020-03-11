@@ -1,9 +1,9 @@
 ## TODO
 - switch kraken1 to kraken2 DONE
-- adapt build database part to kraken2
-- add some kraken2 option DOING
-- clean label_file variable
-- add krona output 
+- add some kraken2 option DONE
+- clean label_file variable DONE
+- add krona output
+- check default parameters for kaiju and kraken (kaiju seems more stringent than kraken) 
 - examine result from both analysis part
 - add inconsistancies flag to explore for new virus detection
-- 
+- adapt build database part to kraken2

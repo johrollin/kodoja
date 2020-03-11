@@ -206,7 +206,7 @@ def kraken_classify(out_dir, kraken_file1, threads, kraken_db, memory, kraken_fi
     #                      os.path.join(out_dir, "kraken_labels.txt"), shell=True)
 
 
-def format_result_table(out_dir, data_table, data_labels, table_colNames):
+def format_result_table(out_dir, data_table, table_colNames):
     """Merge classification and label data.
 
     Merge the classification data (either kraken or kaiju) with the 'label'
@@ -224,20 +224,10 @@ def format_result_table(out_dir, data_table, data_labels, table_colNames):
     seq_labelData = pd.concat([pd.DataFrame([[ el.Seq_ID, ncbi.get_taxid_translator([el.Tax_ID])[el.Tax_ID], 
                             ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames) 
                             for el in seq_data_clean.itertuples() if el.Tax_ID!=0])
-
-    seq_labelData.to_csv(os.path.join(out_dir, 'Alabeldata.txt'),
-                          sep='\t', index=False)
-    seq_data_clean.to_csv(os.path.join(out_dir, 'Aseqcleandata.txt'),
-                          sep='\t', index=False)
-
-    # give  a proper exit if no kraken result ?
+    # give  a proper exit if no kraken or kaiju result ?
     # ValueError: No objects to concatenate
-
     seq_result = pd.merge(seq_data_clean, seq_labelData, on='Seq_ID', how='outer')
-    print('AA')
-    seq_result.to_csv(os.path.join(out_dir, 'AAAAA_merge.txt'),
-                          sep='\t', index=False)
-
+  
     return seq_result
 
 
@@ -272,8 +262,8 @@ def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_
                    forSubset_file2=False):
     """Format table and subset sequences for kaiju analysis.
 
-    Merge kraken_table and kraken_labels using format_result_table() and write to disk
-    (delete kraken_table and kraken_label).
+    Add label to kraken_table  using format_result_table() and write to disk
+    (delete kraken_table).
     If subset = True, make a list of "Seq_ID" column value if sequence is unclassified
     in "Classified" column or classified as VRL (virus) in column "Div_ID". This list will be
     used to subset sequences using sequence_subset(). This should be used when the host plant
@@ -283,8 +273,7 @@ def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_
     """
     kraken_colNames = ["kraken_classified", "Seq_ID", "Tax_ID", "kraken_length",
                        "kraken_k-mer"]
-    kraken_fullTable = format_result_table(out_dir, "kraken_table.txt",
-                                           "kraken_labels.txt", kraken_colNames)
+    kraken_fullTable = format_result_table(out_dir, "kraken_table.txt", kraken_colNames)
     kraken_results = kraken_fullTable[["kraken_classified", "Seq_ID", "Tax_ID", "Seq_tax", "Rank"]]
     kraken_results.to_csv(os.path.join(out_dir, 'kraken_VRL.txt'),
                           sep='\t', index=False)
@@ -298,8 +287,8 @@ def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_
         os.remove(os.path.join(out_dir, "kraken_FormattedTable.txt.gz"))
     subprocess.check_call("gzip " + os.path.join(out_dir, "kraken_FormattedTable.txt"),
                           shell=True)
-    #os.remove(os.path.join(out_dir, "kraken_table.txt"))
-    #os.remove(os.path.join(out_dir, "kraken_labels.txt"))
+    os.remove(os.path.join(out_dir, "kraken_table.txt"))
+
 
 
 def kaiju_classify(kaiju_file1, threads, out_dir, kaiju_db, kaiju_minlen, kraken_db,
@@ -347,9 +336,9 @@ def kaiju_classify(kaiju_file1, threads, out_dir, kaiju_db, kaiju_minlen, kraken
 def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
     """Kodoja results table.
 
-    Imports kraken results table, formats kaiju_table and kaiju_labels and merges
+    Imports kraken results table, formats kaiju_table and merges
     kraken and kaiju results into one table (kodoja). It then makes a table with
-    all identified species and count number of intances for each usin virusSummary().
+    all identified species and count number of intances for each using virusSummary().
     """
     kraken_results = pd.read_csv(os.path.join(out_dir + kraken_VRL),
                                  header=0, sep='\t',
@@ -358,8 +347,7 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
 
     kaiju_colNames = ["kaiju_classified", "Seq_ID", "Tax_ID", "kaiju_lenBest",
                       "kaiju_tax_AN", "kaiju_accession", "kaiju_fragment"]
-    kaiju_fullTable = format_result_table(out_dir, "kaiju_table.txt", "kaiju_labels.txt",
-                                          kaiju_colNames)
+    kaiju_fullTable = format_result_table(out_dir, "kaiju_table.txt", kaiju_colNames)
     # kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(float)
     # kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(int)
     kaiju_results = kaiju_fullTable[["kaiju_classified", "Seq_ID", "Tax_ID", "Seq_tax", "Rank"]]
@@ -389,9 +377,8 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
 
     kodoja["Seq_ID"] = kodoja["Seq_ID"].map(ids1)
 
-    #os.remove(os.path.join(out_dir, "kaiju_table.txt"))
-    #os.remove(os.path.join(out_dir, "kaiju_labels.txt"))
-    #os.remove(os.path.join(out_dir, "kraken_VRL.txt"))
+    os.remove(os.path.join(out_dir, "kaiju_table.txt"))
+    os.remove(os.path.join(out_dir, "kraken_VRL.txt"))
 
     kodoja['combined_result'] = kodoja.kraken_tax_ID[kodoja['kraken_tax_ID'] == kodoja['kaiju_tax_ID']]
     if host_subset:
