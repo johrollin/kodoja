@@ -6,6 +6,7 @@ import pandas as pd
 import random
 import os
 import pickle
+from ete3 import NCBITaxa
 from math import isnan
 
 from Bio import SeqIO
@@ -14,7 +15,7 @@ from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 # The user-facing scripts will all report this version number via --version:
 version = "0.0.10"
-
+ncbi = NCBITaxa()
 
 def check_path(dirs):
     """Check if directory path has '/' at the end.
@@ -184,8 +185,9 @@ def kraken_classify(out_dir, kraken_file1, threads, kraken_db, memory, kraken_fi
 
     kraken_command = "kraken2 "
 
-    kraken_command += "--threads " + str(threads) + " --report kraken.report --db " + kraken_db 
-
+    #kraken_command += "--threads " + str(threads) + " --report kraken.report --db " + kraken_db 
+    kraken_command += "--threads " + str(threads) + " --report " + out_dir + "/kraken.report --db " + kraken_db 
+    
     if memory:
         kraken_command += " --memory-mapping "
         
@@ -212,21 +214,30 @@ def format_result_table(out_dir, data_table, data_labels, table_colNames):
 
     Return merged table
     """
-    label_colNames = ["Seq_ID", "Seq_tax"]
+    #label_colNames = ["Seq_ID", "Seq_tax"]
+    label_colNames = ["Seq_ID", "Seq_tax", "Rank"]
     seq_data = pd.read_csv(os.path.join(out_dir, data_table),
                            sep="\t", header=None, names=table_colNames,
                            index_col=False)
-    try:
-        seq_labelData = pd.read_csv(os.path.join(out_dir, data_labels),
-                                sep="\t", header=None,
-                                names=label_colNames)
-    # kraken2 doesn't have label file anymore
-    except FileNotFoundError:
-        pass
-        #seq_result = pd.DataFrame(columns=["Seq_ID", "Seq_tax"])
-        seq_labelData = pd.DataFrame(columns=["Seq_ID", "Seq_tax"])
+    seq_data_clean = seq_data[[table_colNames[0], table_colNames[1], table_colNames[2]]].copy()
+    
+    seq_labelData = pd.concat([pd.DataFrame([[ el.Seq_ID, ncbi.get_taxid_translator([el.Tax_ID])[el.Tax_ID], 
+                            ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames) 
+                            for el in seq_data_clean.itertuples() if el.Tax_ID!=0])
 
-    seq_result = pd.merge(seq_data, seq_labelData, on='Seq_ID', how='outer')
+    seq_labelData.to_csv(os.path.join(out_dir, 'Alabeldata.txt'),
+                          sep='\t', index=False)
+    seq_data_clean.to_csv(os.path.join(out_dir, 'Aseqcleandata.txt'),
+                          sep='\t', index=False)
+
+    # give  a proper exit if no kraken result ?
+    # ValueError: No objects to concatenate
+
+    seq_result = pd.merge(seq_data_clean, seq_labelData, on='Seq_ID', how='outer')
+    print('AA')
+    seq_result.to_csv(os.path.join(out_dir, 'AAAAA_merge.txt'),
+                          sep='\t', index=False)
+
     return seq_result
 
 
@@ -274,10 +285,7 @@ def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_
                        "kraken_k-mer"]
     kraken_fullTable = format_result_table(out_dir, "kraken_table.txt",
                                            "kraken_labels.txt", kraken_colNames)
-    kraken_fullTable['Seq_ID'] = kraken_fullTable['Seq_ID'].astype(float)
-    kraken_fullTable['Seq_ID'] = kraken_fullTable['Seq_ID'].astype(int)
-
-    kraken_results = kraken_fullTable[["kraken_classified", "Seq_ID", "Tax_ID", "Seq_tax"]]
+    kraken_results = kraken_fullTable[["kraken_classified", "Seq_ID", "Tax_ID", "Seq_tax", "Rank"]]
     kraken_results.to_csv(os.path.join(out_dir, 'kraken_VRL.txt'),
                           sep='\t', index=False)
 
@@ -290,7 +298,7 @@ def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_
         os.remove(os.path.join(out_dir, "kraken_FormattedTable.txt.gz"))
     subprocess.check_call("gzip " + os.path.join(out_dir, "kraken_FormattedTable.txt"),
                           shell=True)
-    os.remove(os.path.join(out_dir, "kraken_table.txt"))
+    #os.remove(os.path.join(out_dir, "kraken_table.txt"))
     #os.remove(os.path.join(out_dir, "kraken_labels.txt"))
 
 
@@ -305,7 +313,7 @@ def kaiju_classify(kaiju_file1, threads, out_dir, kaiju_db, kaiju_minlen, kraken
 
     """
     #kaiju_nodes = kraken_db + "taxonomy/nodes.dmp"
-    kaiju_nodes = kaiju_db + "/../nodes.dmp"
+    kaiju_nodes = kaiju_db + "../nodes.dmp"
     kaiju_fmi = kaiju_db + "kaiju_library.fmi"
     # kaiju_names = kaiju_db + "names.dmp"
 
@@ -352,10 +360,11 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
                       "kaiju_tax_AN", "kaiju_accession", "kaiju_fragment"]
     kaiju_fullTable = format_result_table(out_dir, "kaiju_table.txt", "kaiju_labels.txt",
                                           kaiju_colNames)
-    kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(float)
-    kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(int)
-    kaiju_results = kaiju_fullTable[["kaiju_classified", "Seq_ID", "Tax_ID", "Seq_tax"]]
-
+    # kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(float)
+    # kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(int)
+    kaiju_results = kaiju_fullTable[["kaiju_classified", "Seq_ID", "Tax_ID", "Seq_tax", "Rank"]]
+    #FIXME
+    # marge file still with unassigned reads
     with open(os.path.join(out_dir, 'ids1.pkl'), 'rb') as id_dict:
         ids1 = pickle.load(id_dict)
     kaiju_fullTable["Seq_ID"] = kaiju_fullTable["Seq_ID"].map(ids1)
@@ -380,9 +389,9 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
 
     kodoja["Seq_ID"] = kodoja["Seq_ID"].map(ids1)
 
-    os.remove(os.path.join(out_dir, "kaiju_table.txt"))
+    #os.remove(os.path.join(out_dir, "kaiju_table.txt"))
     #os.remove(os.path.join(out_dir, "kaiju_labels.txt"))
-    os.remove(os.path.join(out_dir, "kraken_VRL.txt"))
+    #os.remove(os.path.join(out_dir, "kraken_VRL.txt"))
 
     kodoja['combined_result'] = kodoja.kraken_tax_ID[kodoja['kraken_tax_ID'] == kodoja['kaiju_tax_ID']]
     if host_subset:

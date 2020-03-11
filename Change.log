@@ -1,8 +1,9 @@
 ## TODO
 - switch kraken1 to kraken2 DONE
 - adapt build database part to kraken2
-- add some kraken2 option
-- add krona output
+- add some kraken2 option DOING
+- clean label_file variable
+- add krona output 
 - examine result from both analysis part
 - add inconsistancies flag to explore for new virus detection
 - 
