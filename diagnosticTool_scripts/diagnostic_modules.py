@@ -287,7 +287,8 @@ def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_
         os.remove(os.path.join(out_dir, "kraken_FormattedTable.txt.gz"))
     subprocess.check_call("gzip " + os.path.join(out_dir, "kraken_FormattedTable.txt"),
                           shell=True)
-    os.remove(os.path.join(out_dir, "kraken_table.txt"))
+    
+    #os.remove(os.path.join(out_dir, "kraken_table.txt"))
 
 
 
@@ -332,8 +333,25 @@ def kaiju_classify(kaiju_file1, threads, out_dir, kaiju_db, kaiju_minlen, kraken
                 if kaiju_file2:
                     os.remove(kaiju_file2)
 
+def add_krona_representation(out_dir):
+    """Make krona representation (html file) with kaiju_table.txt and kraken_table.txt
+    """
+    kraken_file = os.path.join(out_dir, "kraken_table.txt")
+    kaiju_file = os.path.join(out_dir, "kaiju_table.txt")
+    kraken_html_file = os.path.join(out_dir, "kraken.html")
+    kaiju_html_file = os.path.join(out_dir, "kaiju.html")
+    kraken_krona_command = "ktImportTaxonomy -o " + kraken_html_file + " -t 3 " + kraken_file
+    kaiju_krona_command = "ktImportTaxonomy -o " + kaiju_html_file + " -t 3 " + kaiju_file
 
-def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
+    subprocess.check_call(kraken_krona_command, shell=True)
+    subprocess.check_call(kaiju_krona_command, shell=True)
+    try:
+        os.rmdir(os.path.join(out_dir, "kraken.html.files"))
+        os.rmdir(os.path.join(out_dir, "kaiju.html.files"))
+    except FileNotFoundError:
+        pass
+
+def result_analysis(out_dir, kraken_VRL, host_subset):
     """Kodoja results table.
 
     Imports kraken results table, formats kaiju_table and merges
@@ -351,8 +369,6 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
     # kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(float)
     # kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(int)
     kaiju_results = kaiju_fullTable[["kaiju_classified", "Seq_ID", "Tax_ID", "Seq_tax", "Rank"]]
-    #FIXME
-    # marge file still with unassigned reads
     with open(os.path.join(out_dir, 'ids1.pkl'), 'rb') as id_dict:
         ids1 = pickle.load(id_dict)
     kaiju_fullTable["Seq_ID"] = kaiju_fullTable["Seq_ID"].map(ids1)
@@ -364,6 +380,8 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
                           shell=True)
 
     kodoja = pd.merge(kraken_results, kaiju_results, on='Seq_ID', how='outer')
+    # REVIEW does it mean that there is always more kraken result than kaiju ?
+    # to confirm with check default parameters for kaiju and kraken (kaiju seems more stringent than kraken) 
     assert len(kraken_results) == len(kodoja), \
         'ERROR: Kraken and Kaiju results not merged properly'
     if hasattr(kodoja, 'sort_values'):
@@ -377,9 +395,10 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
 
     kodoja["Seq_ID"] = kodoja["Seq_ID"].map(ids1)
 
-    os.remove(os.path.join(out_dir, "kaiju_table.txt"))
+    # Not remove that file anymore, better to keep 
+    #os.remove(os.path.join(out_dir, "kaiju_table.txt"))
     os.remove(os.path.join(out_dir, "kraken_VRL.txt"))
-
+    # REVIEW check behaviour
     kodoja['combined_result'] = kodoja.kraken_tax_ID[kodoja['kraken_tax_ID'] == kodoja['kaiju_tax_ID']]
     if host_subset:
         kodoja = kodoja[(kodoja['kraken_tax_ID'] != float(host_subset)) &
@@ -500,6 +519,7 @@ def result_analysis(out_dir, kraken_VRL, kaiju_table, kaiju_label, host_subset):
         # can use a defaultdict or Counter if have pandas 0.20 onwards
         table_summary['Genus sequences'] = table_summary['Genus'].map(lambda g: genus_either.get(g, 0))
         table_summary['Genus sequences (stringent)'] = table_summary['Genus'].map(lambda g: genus_combined.get(g, 0))
+        # TODO correct virus_table
         if hasattr(table_summary, 'sort_values'):
             # pandas 0.17 onwards
             table_summary.sort_values(['Species sequences (stringent)', 'Species sequences'],

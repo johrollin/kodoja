@@ -15,6 +15,7 @@ from diagnostic_modules import kraken_classify
 from diagnostic_modules import seq_reanalysis
 from diagnostic_modules import kaiju_classify
 from diagnostic_modules import result_analysis
+from diagnostic_modules import add_krona_representation
 
 help_text = """Kodoja Search is a tool intended to identify viral sequences
 in a FASTQ/FASTA sequencing run by matching them against both Kraken and
@@ -182,11 +183,17 @@ def main():
 
     t5 = time.time()
 
+    # Make krona representation
+    t6 = time.time()
+    # TODO confirm krona command line
+    log("Make krona html display\n")
+    add_krona_representation(args.output_dir)
+
     # Merge results
     log("Analyzing Kraken and Kaiju results\n")
-    result_analysis(args.output_dir, "kraken_VRL.txt", "kaiju_table.txt", "kaiju_labels.txt",
-                    args.host_subset)
-    t6 = time.time()
+    result_analysis(args.output_dir, "kraken_VRL.txt", args.host_subset)
+    
+    t7 = time.time()
 
     # Create log file
     if args.host_subset:
@@ -200,6 +207,7 @@ def main():
         "kraken classification = %0.1f h\n"
         "%s\n"
         "kaiju classification = %0.1f h\n"
+        "krona html representation = %0.1f m\n"
         "Results = %0.1f h\n"
         "total = %0.1f h\n"
         % (t1 - t0,
@@ -207,8 +215,9 @@ def main():
            (t3 - t2) / 3600,
            print_statment,
            (t5 - t4) / 3600,
-           (t6 - t5) / 3600,
-           (t6 - t0) / 3600))
+           (t6 - t5) / 60,
+           (t7 - t6) / 3600,
+           (t7 - t0) / 3600))
 
     log("\nkodoja_search.py finished sucessfully.\n")
 

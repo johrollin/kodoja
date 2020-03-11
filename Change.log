@@ -2,8 +2,8 @@
 - switch kraken1 to kraken2 DONE
 - add some kraken2 option DONE
 - clean label_file variable DONE
-- add krona output
-- check default parameters for kaiju and kraken (kaiju seems more stringent than kraken) 
+- add krona output done
 - examine result from both analysis part
+- check default parameters for kaiju and kraken (kaiju seems more stringent than kraken) (see diagnostic_modules.py l 378)
 - add inconsistancies flag to explore for new virus detection
 - adapt build database part to kraken2
