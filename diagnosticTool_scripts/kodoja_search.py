@@ -76,7 +76,7 @@ parser.add_argument('-l', '--kaiju_minlen', type=int, default=15,
                     help='Kaju minimum length')
 parser.add_argument('-i', '--kaiju_mismatch', type=int, default=1,
                     help='Kaju allowed mismatches')
-parser.add_argument('-mm', '--memory', type=int, default=False,
+parser.add_argument('-mm', '--memory', default=False, action='store_true',
                     help='kraken --memory-mapping for big database')
 args = parser.parse_args()
 
