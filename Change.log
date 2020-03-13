@@ -3,7 +3,9 @@
 - add some kraken2 option DONE
 - clean label_file variable DONE
 - add krona output DONE
-- examine result from both analysis part and correct virus_table.txt generation
+- remove pkl file (ids1.pkl, ids2.pkl) https://github.com/abaizan/kodoja/pull/28 DONE
+- examine result from both analysis part and correct/improve virus_table.txt generation see https://github.com/abaizan/kodoja/issues/10 for G_seq
 - check default parameters for kaiju and kraken (kaiju seems more stringent than kraken) (see diagnostic_modules.py l 378)
 - add inconsistancies flag to explore for new virus detection
+- what to do with dark matter ?
 - adapt build database part to kraken2

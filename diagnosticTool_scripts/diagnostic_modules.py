@@ -391,14 +391,18 @@ def result_analysis(out_dir, kraken_VRL, host_subset):
         kodoja.sort(['Seq_ID'], inplace=True)
     kodoja.reset_index(drop=True, inplace=True)
     kodoja.rename(columns={"Seq_tax_x": "kraken_seq_tax", "Seq_tax_y": "kaiju_seq_tax",
-                           'Tax_ID_x': 'kraken_tax_ID', 'Tax_ID_y': 'kaiju_tax_ID'}, inplace=True)
+                           'Tax_ID_x': 'kraken_tax_ID', 'Tax_ID_y': 'kaiju_tax_ID', 'Rank_x': 'kraken_rank', 'Rank_y': 'kaiju_rank'}, inplace=True)
 
     kodoja["Seq_ID"] = kodoja["Seq_ID"].map(ids1)
 
-    # Not remove that file anymore, better to keep 
+    # TODO protein completness metrics with kaiju result
+    # Not remove that file anymore, better to keep to be abbl to dig depper
+    # example calculing protein completness metrics with kaiju result 
     #os.remove(os.path.join(out_dir, "kaiju_table.txt"))
     os.remove(os.path.join(out_dir, "kraken_VRL.txt"))
-    # REVIEW check behaviour
+    # these pkl file are not useful anymore see  https://github.com/abaizan/kodoja/pull/28
+    os.remove(os.path.join(out_dir, "ids1.pkl"))
+    os.remove(os.path.join(out_dir, "ids2.pkl"))
     kodoja['combined_result'] = kodoja.kraken_tax_ID[kodoja['kraken_tax_ID'] == kodoja['kaiju_tax_ID']]
     if host_subset:
         kodoja = kodoja[(kodoja['kraken_tax_ID'] != float(host_subset)) &
@@ -460,6 +464,9 @@ def result_analysis(out_dir, kraken_VRL, host_subset):
                       for key, value in levels_dict.items()}
 
         LCA_tax = {}
+        # NOTE NCBITaxa allow us to have the complete tree of tax_ID can we use that to improve this ?
+        # example kaiju detect at genus level, kraken at species level and the two genus are concording
+
         # Iterate over a copy of the values as we may remove taxonomy entries
         for key, tax in list(levels_tax.items()):
             if tax[-1][0] != 's':

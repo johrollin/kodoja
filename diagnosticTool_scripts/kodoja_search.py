@@ -185,7 +185,7 @@ def main():
 
     # Make krona representation
     t6 = time.time()
-    # TODO confirm krona command line
+    # TODO confirm  kronacommand line
     log("Make krona html display\n")
     add_krona_representation(args.output_dir)
 
