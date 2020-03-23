@@ -220,10 +220,25 @@ def format_result_table(out_dir, data_table, table_colNames):
                            sep="\t", header=None, names=table_colNames,
                            index_col=False)
     seq_data_clean = seq_data[[table_colNames[0], table_colNames[1], table_colNames[2]]].copy()
-    
-    seq_labelData = pd.concat([pd.DataFrame([[ el.Seq_ID, ncbi.get_taxid_translator([el.Tax_ID])[el.Tax_ID], 
-                            ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames) 
-                            for el in seq_data_clean.itertuples() if el.Tax_ID!=0])
+    seq_labelData = pd.DataFrame(columns=label_colNames)
+    for el in seq_data_clean.itertuples():
+        if el.Tax_ID!=0:
+            try:
+                name = ncbi.get_taxid_translator([el.Tax_ID])[el.Tax_ID]
+                seq_labelDatatmp = pd.concat([pd.DataFrame([[ el.Seq_ID, name, 
+                        ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames)])
+                seq_labelData = seq_labelData.append(seq_labelDatatmp)
+            # if the taxi_id is new it may not be in NCBITaxa() already
+            except KeyError:
+                pass
+
+    # try:
+    #     seq_labelData = pd.concat([pd.DataFrame([[ el.Seq_ID, ncbi.get_taxid_translator([el.Tax_ID])[el.Tax_ID], 
+    #                         ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames) 
+    #                         for el in seq_data_clean.itertuples() if el.Tax_ID!=0])
+    # # if the taxi_id is new it may not be in NCBITaxa() already
+    # except KeyError:
+    #         pass
     # give  a proper exit if no kraken or kaiju result ?
     # ValueError: No objects to concatenate
     seq_result = pd.merge(seq_data_clean, seq_labelData, on='Seq_ID', how='outer')
