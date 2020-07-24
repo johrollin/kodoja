@@ -164,31 +164,24 @@ def main():
     kraken_classify(args.output_dir, kraken_file1, args.threads,
                     args.kraken_db, args.memory, kraken_file2,
                     args.kraken_quick)
-
     t3 = time.time()
-
-    # Format kraken data and subset unclassified and non-host sequences
-    log("Analyzing Kraken results\n")
-    seq_reanalysis("kraken_table.txt", "kraken_labels.txt", args.output_dir,
-                   args.data_format, kraken_file1, kraken_file2)
-
-    t4 = time.time()
-
     # Kaiju classification of all sequences or subset sequences
     log("Starting Kaiju classification\n")
     kaiju_classify(kaiju_file1, args.threads, args.output_dir,
                    args.kaiju_db, args.kaiju_minlen, args.kraken_db,
                    kaiju_file2, kaiju_mismatch=args.kaiju_mismatch,
                    kaiju_score=args.kaiju_score)
-
-    t5 = time.time()
-
+    t4 = time.time()
     # Make krona representation
-    t6 = time.time()
-    # TODO confirm  kronacommand line
     log("Make krona html display\n")
     add_krona_representation(args.output_dir)
-
+    
+    t5 = time.time()
+    #Formating kraken2 result
+    log("Formating Kraken results\n")
+    seq_reanalysis("kraken_table.txt", "kraken_labels.txt", args.output_dir,
+                args.data_format, kraken_file1, kraken_file2)
+    t6 = time.time()
     # Merge results
     log("Analyzing Kraken and Kaiju results\n")
     result_analysis(args.output_dir, "kraken_VRL.txt", args.host_subset)
@@ -197,25 +190,25 @@ def main():
 
     # Create log file
     if args.host_subset:
-        print_statment = "subset sequences = %0.1f min\n" % ((t4 - t3) / 60)
+        print_statment = "subset sequences = %0.1f min\n" % ((t6 - t5) / 60)
     else:
-        print_statment = "formatting kraken data = %0.1f min" % ((t4 - t3) / 60)
+        print_statment = "formatting kraken data = %0.1f min" % ((t6 - t5) / 60)
 
     log("Script timer:\n"
         "testing format/replace seqID = %0.1f s\n"
         "fastq and trim = %0.1f min\n"
         "kraken classification = %0.1f h\n"
-        "%s\n"
         "kaiju classification = %0.1f h\n"
         "krona html representation = %0.1f m\n"
+        "%s\n"
         "Results = %0.1f h\n"
         "total = %0.1f h\n"
         % (t1 - t0,
            (t2 - t1) / 60,
            (t3 - t2) / 3600,
+           (t4 - t3) / 3600,
+           (t5 - t4) / 60,
            print_statment,
-           (t5 - t4) / 3600,
-           (t6 - t5) / 60,
            (t7 - t6) / 3600,
            (t7 - t0) / 3600))
 

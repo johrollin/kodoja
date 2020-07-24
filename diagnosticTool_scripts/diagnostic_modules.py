@@ -6,6 +6,7 @@ import pandas as pd
 import random
 import os
 import pickle
+import shutil
 from ete3 import NCBITaxa
 from math import isnan
 
@@ -183,10 +184,10 @@ def kraken_classify(out_dir, kraken_file1, threads, kraken_db, memory, kraken_fi
     classified by kraken with full taxonomy.
     """
 
-    kraken_command = "kraken2 "
+    kraken_command = "kraken "
 
     #kraken_command += "--threads " + str(threads) + " --report kraken.report --db " + kraken_db 
-    kraken_command += "--threads " + str(threads) + " --report " + out_dir + "/kraken.report --db " + kraken_db 
+    kraken_command += "--threads " + str(threads) + " --report " + out_dir + "kraken.report --db " + kraken_db 
     
     if memory:
         kraken_command += " --memory-mapping "
@@ -219,7 +220,8 @@ def format_result_table(out_dir, data_table, table_colNames):
     seq_data = pd.read_csv(os.path.join(out_dir, data_table),
                            sep="\t", header=None, names=table_colNames,
                            index_col=False)
-    seq_data_clean = seq_data[[table_colNames[0], table_colNames[1], table_colNames[2]]].copy()
+    # seq_data_clean = seq_data[[table_colNames[0], table_colNames[1], table_colNames[2]]].copy() #too slow ?
+    seq_data_clean = seq_data[[table_colNames[0], table_colNames[1], table_colNames[2]]]
     seq_labelData = pd.DataFrame(columns=label_colNames)
     for el in seq_data_clean.itertuples():
         if el.Tax_ID!=0:
@@ -229,13 +231,14 @@ def format_result_table(out_dir, data_table, table_colNames):
                         ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames)])
                 seq_labelData = seq_labelData.append(seq_labelDatatmp)
             # if the taxi_id is new it may not be in NCBITaxa() already
+            #TODO add reminder to update NCBITaxa()
             except KeyError:
                 pass
 
     # try:
     #     seq_labelData = pd.concat([pd.DataFrame([[ el.Seq_ID, ncbi.get_taxid_translator([el.Tax_ID])[el.Tax_ID], 
     #                         ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames) 
-    #                         for el in seq_data_clean.itertuples() if el.Tax_ID!=0])
+    #                         for el in seq_data_clean.itertuples() if el.Tax_ID!=0])ls
     # # if the taxi_id is new it may not be in NCBITaxa() already
     # except KeyError:
     #         pass
@@ -272,10 +275,9 @@ def filter_sequence_file(input_file, output_file, user_format, wanted,
     if count < len(wanted):
         print("Warning %i IDs not found in %s" % (len(wanted) - count, input_file))
 
-
 def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_file1,
                    forSubset_file2=False):
-    """Format table and subset sequences for kaiju analysis.
+    """Format table and subset sequences for kraken analysis.
 
     Add label to kraken_table  using format_result_table() and write to disk
     (delete kraken_table).
@@ -360,9 +362,9 @@ def add_krona_representation(out_dir):
 
     subprocess.check_call(kraken_krona_command, shell=True)
     subprocess.check_call(kaiju_krona_command, shell=True)
-    try:
-        os.rmdir(os.path.join(out_dir, "kraken.html.files"))
-        os.rmdir(os.path.join(out_dir, "kaiju.html.files"))
+    try:        
+        shutil.rmtree(os.path.join(out_dir, "kraken.html.files"))
+        shutil.rmtree(os.path.join(out_dir, "kaiju.html.files"))
     except FileNotFoundError:
         pass
 
@@ -418,12 +420,33 @@ def result_analysis(out_dir, kraken_VRL, host_subset):
     # these pkl file are not useful anymore see  https://github.com/abaizan/kodoja/pull/28
     os.remove(os.path.join(out_dir, "ids1.pkl"))
     os.remove(os.path.join(out_dir, "ids2.pkl"))
+    # TODO check all rank not only species one
     kodoja['combined_result'] = kodoja.kraken_tax_ID[kodoja['kraken_tax_ID'] == kodoja['kaiju_tax_ID']]
     if host_subset:
         kodoja = kodoja[(kodoja['kraken_tax_ID'] != float(host_subset)) &
                         (kodoja['kaiju_tax_ID'] != float(host_subset))]
     kodoja.to_csv(os.path.join(out_dir, 'kodoja_VRL.txt'),
                   sep='\t', index=False)
+
+    def get_desired_ranks(taxid, desired_ranks, either_class):
+        lineage = ncbi.get_lineage(taxid)   
+        names = ncbi.get_taxid_translator(lineage)
+        lineage2ranks = ncbi.get_rank(names)
+        ranks2lineage = dict((rank,taxid) for (taxid, rank) in lineage2ranks.items())
+        return {'{}_id'.format(rank): ranks2lineage.get(rank, '<not present>') for rank in desired_ranks} 
+
+    def add_NBreads(dictresult, taxid, results):
+        """"""
+        switch=True
+        for key, NBreads in dictresult.items():
+            if key==taxid:
+                results.append(str(NBreads))
+                switch=False
+                break
+        if switch:
+            results.append(str(0))
+        return results
+
 
     def virusSummary(kodoja_data):
         """Merge tables to create summary table.
@@ -445,111 +468,107 @@ def result_analysis(out_dir, kraken_VRL, host_subset):
         'd__Viruses|f__Closteroviridae|g__Ampelovirus|s__Grapevine_leafroll-associated_virus_4').
         """
         
-        
         kraken_class = dict(kodoja_data['kraken_tax_ID'].value_counts())
-        kraken_levels = pd.Series(kodoja_data.kraken_seq_tax.values,
-                                  index=kodoja_data.kraken_tax_ID).to_dict()
+        # kraken_levels = pd.Series(kodoja_data.kraken_seq_tax.values,
+        #                             index=kodoja_data.kraken_tax_ID).to_dict()
         kaiju_class = dict(kodoja_data['kaiju_tax_ID'].value_counts())
-        kaiju_levels = pd.Series(kodoja_data.kaiju_seq_tax.values,
-                                 index=kodoja_data.kaiju_tax_ID).to_dict()
+        # kaiju_levels = pd.Series(kodoja_data.kaiju_seq_tax.values,
+        #                             index=kodoja_data.kaiju_tax_ID).to_dict()
 
-        # Number of sequences classified to taxID by both tools
+        # Number of same sequences classified to same taxID by both tools
         combined_class = dict(kodoja_data['combined_result'].value_counts())
 
         # Number of sequences classified to taxID by either tool
-        either_class = kraken_class.copy()
-        either_class.update(kaiju_class)
+        #either_class = kraken_class.copy()
+        # merge kraken_class & kaiju_class if considers two identical keys, the values are summed instead of overwritten.
+        either_class = {k: kraken_class.get(k, 0) + kaiju_class.get(k, 0) for k in set(kraken_class) | set(kaiju_class)}
+        #either_class.update(kaiju_class)
+        
         either_class.pop(0, None)
+        taxids=[]
         for key, value in either_class.items():
-            if key in kraken_class:
-                if key in kaiju_class:
-                    either_class[key] = kraken_class[key] + kaiju_class[key]
-                    if key in combined_class:
-                        either_class[key] = either_class[key] - combined_class[key]
-                else:
-                    either_class[key] = kraken_class[key]
-            else:
-                either_class[key] = kaiju_class[key]
+            taxids.append(key)
 
-        levels_dict = kraken_levels.copy()
-        levels_dict.update(kaiju_levels)
-        levels_dict.pop(0, None)
-        levels_dict = {k: levels_dict[k] for k in levels_dict if not isnan(k)}
-        levels_tax = {key: list(map(str, value.split('|')))
-                      for key, value in levels_dict.items()}
-
-        LCA_tax = {}
         # NOTE NCBITaxa allow us to have the complete tree of tax_ID can we use that to improve this ?
         # example kaiju detect at genus level, kraken at species level and the two genus are concording
+        desired_ranks = ['family', 'genus', 'species']
 
-        # Iterate over a copy of the values as we may remove taxonomy entries
-        for key, tax in list(levels_tax.items()):
-            if tax[-1][0] != 's':
-                LCA_tax[key] = tax[-1]
-                levels_tax.pop(key)
-
-        species_dict = {}
-        for key in levels_tax:
-            species_dict[key] = " ".join(levels_tax[key][-1][3:].split("_"))
-
-        # Find the genus for each species
-        genus_per_species = {}
-        for key, value in levels_dict.items():
-            if len(value.split('g__')) > 1:
-                genus_per_species[key] = value.split('g__')[1].split('|')[0]
-            else:
-                genus_per_species[key] = ''
-
-        # TaxID for genus
-        genus_taxid = {}
-        for key, value in LCA_tax.items():
-            if value[0:3] == 'g__':
-                genus = value[3:]
-                if genus in genus_taxid:
-                    genus_taxid[genus].append(key)
+        table_summary = pd.DataFrame(columns=['Original_query_taxid','family', 'genus',
+                                            'species', 'NBreads_either', 'NBreads_common', 
+                                            'NBreads_kaiju', 'NBreads_kraken'])
+        # for each taxID found by either kraken or kaiju
+        for taxid, nbreads in either_class.items():
+            results = list()
+            results.append(taxid)
+            # get rank
+            ranks = get_desired_ranks(taxid, desired_ranks, either_class)
+            for key, rank in ranks.items():
+                if rank != '<not present>':
+                    results.append(list(ncbi.get_taxid_translator([rank]).values())[0])
                 else:
-                    genus_taxid[genus] = [key]
-        with open(os.path.join(out_dir, 'genus_taxid.pkl'), 'wb') as pkl_dict:
-            pickle.dump(genus_taxid, pkl_dict, protocol=pickle.HIGHEST_PROTOCOL)
+                    results.append(rank)
 
-        # Number of sequences classified to genus level
-        def genus_seq_count(dict_class):
-            genus_dict = {}
-            for key, value in genus_taxid.items():
-                seq_sum = 0
-                for taxid in value:
-                    if taxid in dict_class:
-                        seq_sum += dict_class[taxid]
-                genus_dict[key] = seq_sum
-            return genus_dict
+            switch=True
+            for key, NBreads in combined_class.items():
+                if key == taxid:
+                    nb_common = NBreads
+                    switch = False
+                    break
+                if switch:
+                    nb_common = 0
 
-        genus_either = genus_seq_count(either_class)
-        genus_combined = genus_seq_count(combined_class)
+            # NBreads_either
+            results.append(nbreads - nb_common)
+            # NBreads_common
+            results.append(nb_common)
+            # NBreads_kaiju
+            results=add_NBreads(kaiju_class, taxid, results)
+            # NBreads_kraken
+            results=add_NBreads(kraken_class, taxid, results)
 
-        table_summary = pd.DataFrame(columns=['Species', 'Species TaxID',
-                                              'Species sequences',
-                                              'Species sequences (stringent)',
-                                              'Genus',
-                                              'Genus sequences',
-                                              'Genus sequences (stringent)'])
-        table_summary['Species TaxID'] = [int(key) for key in levels_tax]
-        table_summary['Species sequences'] = table_summary['Species TaxID'].map(either_class)
-        table_summary['Species sequences (stringent)'] = table_summary['Species TaxID'].map(combined_class)
-        table_summary['Species'] = table_summary['Species TaxID'].map(species_dict)
-        table_summary['Genus'] = table_summary['Species TaxID'].map(genus_per_species)
+            df_result = pd.Series(results, index = table_summary.columns )
+            table_summary = table_summary.append(df_result, ignore_index=True)
+
+        # TODO improve virus_table add genus/family level
+        table_summary.to_csv(os.path.join(out_dir, 'virus_table.tsv'),
+                                sep='\t', index=False)
+
+        # def genus_seq_count(dict_class):
+        #     genus_dict = {}
+        #     for key, value in genus_taxid.items():
+        #         seq_sum = 0
+        #         for taxid in value:
+        #             if taxid in dict_class:
+        #                 seq_sum += dict_class[taxid]
+        #         genus_dict[key] = seq_sum
+        #     return genus_dict
+
+        # genus_either = genus_seq_count(either_class)
+        # genus_combined = genus_seq_count(combined_class)
+
+        # table_summary = pd.DataFrame(columns=['Species', 'Species TaxID',
+        #                                         'Species sequences',
+        #                                         'Species sequences (stringent)',
+        #                                         'Genus',
+        #                                         'Genus sequences',
+        #                                         'Genus sequences (stringent)'])
+        # table_summary['Species TaxID'] = [int(key) for key in levels_tax]
+        # table_summary['Species sequences'] = table_summary['Species TaxID'].map(either_class)
+        # table_summary['Species sequences (stringent)'] = table_summary['Species TaxID'].map(combined_class)
+        # table_summary['Species'] = table_summary['Species TaxID'].map(species_dict)
+        # table_summary['Genus'] = table_summary['Species TaxID'].map(genus_per_species)
         # Using functions in map to set default value of 0,
         # can use a defaultdict or Counter if have pandas 0.20 onwards
-        table_summary['Genus sequences'] = table_summary['Genus'].map(lambda g: genus_either.get(g, 0))
-        table_summary['Genus sequences (stringent)'] = table_summary['Genus'].map(lambda g: genus_combined.get(g, 0))
-        # TODO correct virus_table
-        if hasattr(table_summary, 'sort_values'):
-            # pandas 0.17 onwards
-            table_summary.sort_values(['Species sequences (stringent)', 'Species sequences'],
-                                      ascending=False, inplace=True)
-        else:
-            table_summary.sort(['Species sequences (stringent)', 'Species sequences'],
-                               ascending=False, inplace=True)
-        table_summary.to_csv(os.path.join(out_dir, 'virus_table.txt'),
-                             sep='\t', index=False)
-
+        # table_summary['Genus sequences'] = table_summary['Genus'].map(lambda g: genus_either.get(g, 0))
+        # table_summary['Genus sequences (stringent)'] = table_summary['Genus'].map(lambda g: genus_combined.get(g, 0))
+        # TODO improve virus_table add genus/family level
+        # if hasattr(table_summary, 'sort_values'):
+        #     # pandas 0.17 onwards
+        #     table_summary.sort_values(['Species sequences (stringent)', 'Species sequences'],
+        #                                 ascending=False, inplace=True)
+        # else:
+        #     table_summary.sort(['Species sequences (stringent)', 'Species sequences'],
+        #                         ascending=False, inplace=True)
+        # table_summary.to_csv(os.path.join(out_dir, 'test_virus_table.txt'),
+        #                        sep='\t', index=False)
     virusSummary(kodoja)
