@@ -7,6 +7,8 @@ import random
 import os
 import pickle
 import shutil
+import json
+
 from ete3 import NCBITaxa
 from math import isnan
 
@@ -184,7 +186,7 @@ def kraken_classify(out_dir, kraken_file1, threads, kraken_db, memory, kraken_fi
     classified by kraken with full taxonomy.
     """
 
-    kraken_command = "kraken "
+    kraken_command = "kraken2 "
 
     #kraken_command += "--threads " + str(threads) + " --report kraken.report --db " + kraken_db 
     kraken_command += "--threads " + str(threads) + " --report " + out_dir + "kraken.report --db " + kraken_db 
@@ -205,49 +207,6 @@ def kraken_classify(out_dir, kraken_file1, threads, kraken_db, memory, kraken_fi
     #subprocess.check_call("kraken-translate --mpa-format --db " + kraken_db +
     #                      " " + os.path.join(out_dir, "kraken_table.txt") + " > " +
     #                      os.path.join(out_dir, "kraken_labels.txt"), shell=True)
-
-
-def format_result_table(out_dir, data_table, table_colNames):
-    """Merge classification and label data.
-
-    Merge the classification data (either kraken or kaiju) with the 'label'
-    data which has full taxonomy for the classified sequence.
-
-    Return merged table
-    """
-    #label_colNames = ["Seq_ID", "Seq_tax"]
-    label_colNames = ["Seq_ID", "Seq_tax", "Rank"]
-    seq_data = pd.read_csv(os.path.join(out_dir, data_table),
-                           sep="\t", header=None, names=table_colNames,
-                           index_col=False)
-    # seq_data_clean = seq_data[[table_colNames[0], table_colNames[1], table_colNames[2]]].copy() #too slow ?
-    seq_data_clean = seq_data[[table_colNames[0], table_colNames[1], table_colNames[2]]]
-    seq_labelData = pd.DataFrame(columns=label_colNames)
-    for el in seq_data_clean.itertuples():
-        if el.Tax_ID!=0:
-            try:
-                name = ncbi.get_taxid_translator([el.Tax_ID])[el.Tax_ID]
-                seq_labelDatatmp = pd.concat([pd.DataFrame([[ el.Seq_ID, name, 
-                        ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames)])
-                seq_labelData = seq_labelData.append(seq_labelDatatmp)
-            # if the taxi_id is new it may not be in NCBITaxa() already
-            #TODO add reminder to update NCBITaxa()
-            except KeyError:
-                pass
-
-    # try:
-    #     seq_labelData = pd.concat([pd.DataFrame([[ el.Seq_ID, ncbi.get_taxid_translator([el.Tax_ID])[el.Tax_ID], 
-    #                         ncbi.get_rank([el.Tax_ID])[el.Tax_ID]]], columns=label_colNames) 
-    #                         for el in seq_data_clean.itertuples() if el.Tax_ID!=0])ls
-    # # if the taxi_id is new it may not be in NCBITaxa() already
-    # except KeyError:
-    #         pass
-    # give  a proper exit if no kraken or kaiju result ?
-    # ValueError: No objects to concatenate
-    seq_result = pd.merge(seq_data_clean, seq_labelData, on='Seq_ID', how='outer')
-  
-    return seq_result
-
 
 def filter_sequence_file(input_file, output_file, user_format, wanted,
                          ignore_suffix=None):
@@ -274,40 +233,6 @@ def filter_sequence_file(input_file, output_file, user_format, wanted,
     print("Saved %i records from %s to %s" % (count, input_file, output_file))
     if count < len(wanted):
         print("Warning %i IDs not found in %s" % (len(wanted) - count, input_file))
-
-def seq_reanalysis(kraken_table, kraken_labels, out_dir, user_format, forSubset_file1,
-                   forSubset_file2=False):
-    """Format table and subset sequences for kraken analysis.
-
-    Add label to kraken_table  using format_result_table() and write to disk
-    (delete kraken_table).
-    If subset = True, make a list of "Seq_ID" column value if sequence is unclassified
-    in "Classified" column or classified as VRL (virus) in column "Div_ID". This list will be
-    used to subset sequences using sequence_subset(). This should be used when the host plant
-    genome is used to classify sequences.
-
-    Return merged kraken tableresult tables and subsetted sequence files (i subset=True).
-    """
-    kraken_colNames = ["kraken_classified", "Seq_ID", "Tax_ID", "kraken_length",
-                       "kraken_k-mer"]
-    kraken_fullTable = format_result_table(out_dir, "kraken_table.txt", kraken_colNames)
-    kraken_results = kraken_fullTable[["kraken_classified", "Seq_ID", "Tax_ID", "Seq_tax", "Rank"]]
-    kraken_results.to_csv(os.path.join(out_dir, 'kraken_VRL.txt'),
-                          sep='\t', index=False)
-
-    with open(os.path.join(out_dir, 'ids1.pkl'), 'rb') as id_dict:
-        ids1 = pickle.load(id_dict)
-    kraken_fullTable["Seq_ID"] = kraken_fullTable["Seq_ID"].map(ids1)
-    kraken_fullTable.to_csv(os.path.join(out_dir, "kraken_FormattedTable.txt"),
-                            sep='\t', index=False)
-    if os.path.isfile(os.path.join(out_dir, "kraken_FormattedTable.txt.gz")):
-        os.remove(os.path.join(out_dir, "kraken_FormattedTable.txt.gz"))
-    subprocess.check_call("gzip " + os.path.join(out_dir, "kraken_FormattedTable.txt"),
-                          shell=True)
-    
-    #os.remove(os.path.join(out_dir, "kraken_table.txt"))
-
-
 
 def kaiju_classify(kaiju_file1, threads, out_dir, kaiju_db, kaiju_minlen, kraken_db,
                    kaiju_file2=False, kaiju_mismatch=False, kaiju_score=False):
@@ -368,75 +293,79 @@ def add_krona_representation(out_dir):
     except FileNotFoundError:
         pass
 
-def result_analysis(out_dir, kraken_VRL, host_subset):
-    """Kodoja results table.
-
-    Imports kraken results table, formats kaiju_table and merges
-    kraken and kaiju results into one table (kodoja). It then makes a table with
-    all identified species and count number of intances for each using virusSummary().
+def get_desired_ranks(taxid, desired_ranks):
     """
-    kraken_results = pd.read_csv(os.path.join(out_dir + kraken_VRL),
-                                 header=0, sep='\t',
-                                 dtype={"kraken_classified": str, "Seq_ID": int,
-                                        "Tax_ID": int, "Seq_tax": str})
+    give taxonomic name and ID for all rank in desired_ranks
+    """
+    # get lineage (current taxid)
+    lineage = ncbi.get_lineage(taxid)   
+    # get names
+    names = ncbi.get_taxid_translator(lineage)
+    # get current taxid : rank
+    lineage2ranks = ncbi.get_rank(names)
+    # {rank: {current taxid: name}}
+    ranks2lineage = dict((rank, ncbi.get_taxid_translator([taxid])) for (taxid, rank) in lineage2ranks.items())
+    # reformat like {taxid_initial: {rank: {current taxid: name}}}
+    return {format(infos) : ranks2lineage.get(infos, 0) for infos in desired_ranks} 
 
-    kaiju_colNames = ["kaiju_classified", "Seq_ID", "Tax_ID", "kaiju_lenBest",
-                      "kaiju_tax_AN", "kaiju_accession", "kaiju_fragment"]
-    kaiju_fullTable = format_result_table(out_dir, "kaiju_table.txt", kaiju_colNames)
-    # kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(float)
-    # kaiju_fullTable['Seq_ID'] = kaiju_fullTable['Seq_ID'].astype(int)
-    kaiju_results = kaiju_fullTable[["kaiju_classified", "Seq_ID", "Tax_ID", "Seq_tax", "Rank"]]
-    with open(os.path.join(out_dir, 'ids1.pkl'), 'rb') as id_dict:
-        ids1 = pickle.load(id_dict)
-    kaiju_fullTable["Seq_ID"] = kaiju_fullTable["Seq_ID"].map(ids1)
-    kaiju_fullTable.to_csv(os.path.join(out_dir, 'kaiju_FormattedTable.txt'),
-                           sep='\t', index=False)
-    if os.path.isfile(os.path.join(out_dir, "kaiju_FormattedTable.txt.gz")):
-        os.remove(os.path.join(out_dir, "kaiju_FormattedTable.txt.gz"))
-    subprocess.check_call('gzip ' + os.path.join(out_dir, 'kaiju_FormattedTable.txt'),
-                          shell=True)
+def clean_dataset(kodoja_seq_data):
+    """
+    Get some number to calcul statistic later
+    and remove row/read if both tools don't have result for that row/reads
+    """ 
+    # TODO store read name when no result for both tool to adress dark matter PBM
+    #   
+    # save the number of reads that have been processed (one pair is count once)
+    total_reads_nb = len(kodoja_seq_data.index)
+    # when kaiju don't have result, put 0 instead of Nan (NoneType)
+    kodoja_seq_data["kaiju_Tax_ID"] = kodoja_seq_data["kaiju_Tax_ID"].fillna(0)
+    # remove row if both kraken and kaiju don't have result
+    kodoja_seq_data = kodoja_seq_data.drop(kodoja_seq_data[
+        (kodoja_seq_data["kraken_Tax_ID"] == 0) & (kodoja_seq_data["kaiju_Tax_ID"] == 0)].index)
+    # read nb that have been assigned by at least one tool
+    total_known_read = len(kodoja_seq_data.index)
+    # read nb that NOT have been assigned by at least one tool
+    total_unknown_reads = total_reads_nb - total_known_read
 
-    kodoja = pd.merge(kraken_results, kaiju_results, on='Seq_ID', how='outer')
-    # REVIEW does it mean that there is always more kraken result than kaiju ?
-    # to confirm with check default parameters for kaiju and kraken (kaiju seems more stringent than kraken) 
-    assert len(kraken_results) == len(kodoja), \
-        'ERROR: Kraken and Kaiju results not merged properly'
-    if hasattr(kodoja, 'sort_values'):
-        # pandas 0.17 onwards
-        kodoja.sort_values(['Seq_ID'], inplace=True)
-    else:
-        kodoja.sort(['Seq_ID'], inplace=True)
-    kodoja.reset_index(drop=True, inplace=True)
-    kodoja.rename(columns={"Seq_tax_x": "kraken_seq_tax", "Seq_tax_y": "kaiju_seq_tax",
-                           'Tax_ID_x': 'kraken_tax_ID', 'Tax_ID_y': 'kaiju_tax_ID', 'Rank_x': 'kraken_rank', 'Rank_y': 'kaiju_rank'}, inplace=True)
+    return total_reads_nb, total_known_read, total_unknown_reads
 
-    kodoja["Seq_ID"] = kodoja["Seq_ID"].map(ids1)
+def get_combination(kodoja_seq_data):
+    """
+    put row/read to combined result is same result for both tool
+    put in either if at least one of the tool classified the row/read (meanning that all reads in conbine are in either)
+    """
+    # check if reads have same assignation
+    # TODO check all rank od interest not only the most precise one
+    kodoja_seq_data["combined_result"] = kodoja_seq_data.kraken_Tax_ID[kodoja_seq_data["kraken_Tax_ID"] ==
+        kodoja_seq_data["kaiju_Tax_ID"]]
+    
+    # when combined_result don"t have result, put 0 instead of Nan (NoneType)
+    kodoja_seq_data["combined_result"] = kodoja_seq_data["combined_result"].fillna(0)
+    # convert to int (default float)
+    kodoja_seq_data[["combined_result"]] = kodoja_seq_data[["combined_result"]].astype(int)
+    # Number of same sequences classified to same taxID by both tools
+    combined_class = dict(kodoja_seq_data["combined_result"].value_counts())
+    combined_class.pop(0)
 
-    # TODO protein completness metrics with kaiju result
-    # Not remove that file anymore, better to keep to be abbl to dig depper
-    # example calculing protein completness metrics with kaiju result 
-    #os.remove(os.path.join(out_dir, "kaiju_table.txt"))
-    os.remove(os.path.join(out_dir, "kraken_VRL.txt"))
-    # these pkl file are not useful anymore see  https://github.com/abaizan/kodoja/pull/28
-    os.remove(os.path.join(out_dir, "ids1.pkl"))
-    os.remove(os.path.join(out_dir, "ids2.pkl"))
-    # TODO check all rank not only species one
-    kodoja['combined_result'] = kodoja.kraken_tax_ID[kodoja['kraken_tax_ID'] == kodoja['kaiju_tax_ID']]
-    if host_subset:
-        kodoja = kodoja[(kodoja['kraken_tax_ID'] != float(host_subset)) &
-                        (kodoja['kaiju_tax_ID'] != float(host_subset))]
-    kodoja.to_csv(os.path.join(out_dir, 'kodoja_VRL.txt'),
-                  sep='\t', index=False)
+    # get kraken nb of read by taxid
+    kraken_class = dict(kodoja_seq_data["kraken_Tax_ID"].value_counts())
+    # get kaiju nb of read by taxid
+    kaiju_class = dict(kodoja_seq_data["kaiju_Tax_ID"].value_counts())
+    # Number of sequences classified to taxID by at least one of the tools
+    either_class = {k: kraken_class.get(k, 0) + kaiju_class.get(k, 0) for k in set(kraken_class) | set(kaiju_class)}
+    either_class.pop(0, None)
 
-    def get_desired_ranks(taxid, desired_ranks, either_class):
-        lineage = ncbi.get_lineage(taxid)   
-        names = ncbi.get_taxid_translator(lineage)
-        lineage2ranks = ncbi.get_rank(names)
-        ranks2lineage = dict((rank,taxid) for (taxid, rank) in lineage2ranks.items())
-        return {'{}_id'.format(rank): ranks2lineage.get(rank, '<not present>') for rank in desired_ranks} 
+    return either_class, combined_class, kraken_class, kaiju_class
 
+def get_comparison_list(seq_orgData_list, desired_ranks2, tax_name_id_path_all, combined_class, 
+    taxid, nbreads, kraken_class, kaiju_class, total_reads_nb, total_known_read):
+    """
+    writing in a list everything need to make an easy human readable result table (virus_table.tsv)
+    """
     def add_NBreads(dictresult, taxid, results):
-        """"""
+        """
+        count nb of read in a taxid
+        """
         switch=True
         for key, NBreads in dictresult.items():
             if key==taxid:
@@ -446,129 +375,196 @@ def result_analysis(out_dir, kraken_VRL, host_subset):
         if switch:
             results.append(str(0))
         return results
+    
+    seq_orgData_list.append(taxid)
+    for rank in desired_ranks2:
+        if tax_name_id_path_all[taxid][rank] != 0:
+            seq_orgData_list.append(list(tax_name_id_path_all[taxid][rank].values())[0])
+        else:
+            seq_orgData_list.append("None")
+
+    nb_common = int(add_NBreads(combined_class, taxid, list())[0])
+    # print(nb_common)
+    nb_either = nbreads - nb_common
+    # NBreads_either
+    seq_orgData_list.append(nb_either)
+    # NBreads_common
+    seq_orgData_list.append(nb_common)
+    # percentage_common
+    percentage_common = str((nb_common/nb_either)*100) + "%"
+    seq_orgData_list.append(percentage_common)
+    # NBreads_kaiju
+    nbreads_kaiju = int(add_NBreads(kaiju_class, taxid, list())[0])
+    seq_orgData_list.append(nbreads_kaiju)
+    # NBreads_kraken
+    nbreads_kraken = int(add_NBreads(kraken_class, taxid, list())[0])
+    seq_orgData_list.append(nbreads_kraken)
+    # either_absolute
+    either_absolute = str((nb_either/total_reads_nb)*100) + "%"
+    seq_orgData_list.append(either_absolute) #keep that one
+    # either_logical
+    either_logical = str((nb_either/total_known_read)*100) + "%"
+    seq_orgData_list.append(either_logical)
+    # common_absolute
+    common_absolute = str((nb_common/total_reads_nb)*100) + "%"
+    seq_orgData_list.append(common_absolute)
+    # common_logical
+    common_logical = str((nb_common/total_known_read)*100) + "%"
+    seq_orgData_list.append(common_logical)   
+
+    return seq_orgData_list
+
+def format_result_table(kodoja_seq_data, host_subset):
+    """
+    Merge the classification data (either kraken or kaiju) with the 'label'
+    data which has full taxonomy for the classified sequence.
+    """
+    label_colNames = ["Seq_ID", "Seq_ID_initial", "Tax_ID_kraken", "Seq_tax_kraken", 
+        "Rank_kraken", "Tax_ID_kaiju", "Seq_tax_kaiju", "Rank_kaiju"]
+    org_colNames = ["Original_query_taxid", "superkingdom", "family", "genus", 
+        "species", "NBreads_either", "NBreads_common", "percentage_common", 
+        "NBreads_kaiju", "NBreads_kraken", "pg_either_absolute", "pg_either_logical",
+         "pg_common_absolute", "pg_common_logical"]
+    desired_ranks = ["species","genus","family","superkingdom"]
+    desired_ranks2 = ["superkingdom", "family", "genus", "species"] 
+    seq_orgData = pd.DataFrame(columns=org_colNames)
+    seq_labelDataList = []
+
+    # clean main dataset and get raw number to make stats
+    total_reads_nb, total_known_read, total_unknown_reads = clean_dataset(kodoja_seq_data)
+    # Get reads assignation combination between kreaken and kaiju
+    either_class, combined_class, kraken_class, kaiju_class = get_combination(kodoja_seq_data)
+
+    #TODO check all rank of interest not only the most precise one
+    #TODO Adding number of read for each rank to tax_name_id_path_all ? 
+    tax_name_id_path_all={}   #12182: {'superkingdom': {10239: 'Viruses'}, ... 'species': {12182: 'Potato aucuba mosaic virus'}}
+    tax_name_id_path={}   #12182: { ['species', 'Potato aucuba mosaic virus']}
+    for taxid, nbreads in either_class.items():
+        tax_name_id_path_all.update({taxid:get_desired_ranks(taxid, desired_ranks)})
+        taxid2name = ncbi.get_taxid_translator([str(taxid)])
+        taxid2rank = ncbi.get_rank([taxid])
+        tax_name_id_path.update({taxid:[taxid2rank[taxid], taxid2name[taxid]]})
+
+        seq_orgData_list_tmp = get_comparison_list(
+            list(), desired_ranks2, tax_name_id_path_all, 
+            combined_class, taxid, nbreads, kraken_class, kaiju_class,
+            total_reads_nb, total_known_read)
+             
+        seq_orgData = seq_orgData.append(pd.Series(seq_orgData_list_tmp, index = seq_orgData.columns ), ignore_index=True)   
+    #add unknown/dark matter count total_unknown_reads
+    either_absolute = str((total_unknown_reads/total_reads_nb)*100) + "%"
+    either_logical = str((total_unknown_reads/total_known_read)*100) + "%"
+    seq_orgData_list_tmp = [-1, "Unassigned", "Unassigned", "Unassigned", "Unassigned", total_unknown_reads, 0, "0%", 0, 
+    0, either_absolute, either_logical, "0%", "0%"]
+    seq_orgData = seq_orgData.append(pd.Series(seq_orgData_list_tmp, index = seq_orgData.columns ), ignore_index=True)
 
 
-    def virusSummary(kodoja_data):
-        """Merge tables to create summary table.
+    for element in kodoja_seq_data.itertuples():
+        ### find taxonomic name and rank if possible
+        # for kraken
+        if element.kraken_Tax_ID !=0:
+            # use the stored taxonomic name find the one belonging to each read 
+            seq_tax_kraken = tax_name_id_path[element.kraken_Tax_ID][1]
+            rank_kraken = tax_name_id_path[element.kraken_Tax_ID][0]
+        else:
+            seq_tax_kraken = 0
+            rank_kraken = "None"
+        # for kaiju
+        if element.kaiju_Tax_ID !=0:
+            # use the stored taxonomic name find the one belonging to each read 
+            seq_tax_kaiju = tax_name_id_path[element.kaiju_Tax_ID][1]
+            rank_kaiju = tax_name_id_path[element.kaiju_Tax_ID][0]
+        else:
+            seq_tax_kaiju = 0
+            rank_kaiju = "None"     
+        ### write taxonomic name and rank
 
-        Creates a summary table with virus species names, tax id, count of
-        sequences by kraken, kaiju and sequences that were identified by both
-        tools as belonging to that species.
+        #####performance issue: 
+        # https://stackoverflow.com/questions/36489576/why-does-concatenation-of-dataframes-get-exponentially-slower/36489724#36489724
+        # seq_labelData = seq_labelData.append(pd.concat([pd.DataFrame([[ 
+        #     element.Seq_ID, # Seq_ID
+        #     element.Seq_ID_initial, # Seq_ID_initial
+        #     element.kraken_Tax_ID, # Tax_ID_kraken
+        #     seq_tax_kraken, # Seq_tax_kraken
+        #     rank_kraken, # Rank_kraken
+        #     element.kaiju_Tax_ID, # Tax_ID_kaiju
+        #     seq_tax_kaiju, # Seq_tax_kaiju
+        #     rank_kaiju # Rank_kaiju
+        #     ]], columns=label_colNames)])) 
 
-        For each tax id, a sequence count for kraken, kaiju and the combined
-        is made. '_levels' dict have all tax ids present in th table with the
-        taxanomic 'labels' given by kraken-traslate.
+        seq_labelDataList.append((      
+            element.Seq_ID, # Seq_ID
+            element.Seq_ID_initial, # Seq_ID_initial
+            element.kraken_Tax_ID, # Tax_ID_kraken
+            seq_tax_kraken, # Seq_tax_kraken
+            rank_kraken, # Rank_kraken
+            element.kaiju_Tax_ID, # Tax_ID_kaiju
+            seq_tax_kaiju, # Seq_tax_kaiju
+            rank_kaiju # Rank_kaiju)
+        ))
+    seq_labelData = pd.DataFrame(seq_labelDataList, columns = label_colNames)            
+    
+    if host_subset:
+        seq_labelData = seq_labelData[(seq_labelData["Tax_ID_kraken"] != float(host_subset)) &
+                        (seq_labelData["Tax_ID_kaiju"] != float(host_subset))]
 
-        'associated_tax' dict, has tax ids which would be related to a species
-        tax id, as they belong to taxa which are higher, and therefore if
-        they could belong to a species but cannot be identified specifically
-        (i.e. a sequence whih has been given the following label
-        'd__Viruses|f__Closteroviridae|g__Ampelovirus' could be an unspecifically
-        identified 'Grapevine_leafroll-associated_virus_4' the label for which is
-        'd__Viruses|f__Closteroviridae|g__Ampelovirus|s__Grapevine_leafroll-associated_virus_4').
-        """
-        
-        kraken_class = dict(kodoja_data['kraken_tax_ID'].value_counts())
-        # kraken_levels = pd.Series(kodoja_data.kraken_seq_tax.values,
-        #                             index=kodoja_data.kraken_tax_ID).to_dict()
-        kaiju_class = dict(kodoja_data['kaiju_tax_ID'].value_counts())
-        # kaiju_levels = pd.Series(kodoja_data.kaiju_seq_tax.values,
-        #                             index=kodoja_data.kaiju_tax_ID).to_dict()
+    if hasattr(seq_labelData, "sort_values"):
+        # pandas 0.17 onwards
+        seq_labelData.sort_values(["Seq_ID"], inplace=True)
+    seq_labelData.reset_index(drop=True, inplace=True)
 
-        # Number of same sequences classified to same taxID by both tools
-        combined_class = dict(kodoja_data['combined_result'].value_counts())
+    return seq_labelData, seq_orgData, tax_name_id_path_all
 
-        # Number of sequences classified to taxID by either tool
-        #either_class = kraken_class.copy()
-        # merge kraken_class & kaiju_class if considers two identical keys, the values are summed instead of overwritten.
-        either_class = {k: kraken_class.get(k, 0) + kaiju_class.get(k, 0) for k in set(kraken_class) | set(kaiju_class)}
-        #either_class.update(kaiju_class)
-        
-        either_class.pop(0, None)
-        taxids=[]
-        for key, value in either_class.items():
-            taxids.append(key)
+def result_comparaison(out_dir, kraken_table,  kaiju_table, host_subset):
+    """
+    Open kraken/kaiju result file 
+    launch comparative analaysis of the result
+    clean result repository
+    write output file 
+    """
 
-        # NOTE NCBITaxa allow us to have the complete tree of tax_ID can we use that to improve this ?
-        # example kaiju detect at genus level, kraken at species level and the two genus are concording
-        desired_ranks = ['family', 'genus', 'species']
+    kraken_colNames = ["kraken_classified", "Seq_ID", "kraken_Tax_ID", "kraken_length", "kraken_k-mer"]
+    kaiju_colNames = ["kaiju_classified", "Seq_ID", "kaiju_Tax_ID", "kaiju_lenBest", "kaiju_tax_AN", 
+        "kaiju_accession", "kaiju_fragment"]
+    
+    # open kraken result file
+    kraken_seq_data = pd.read_csv(os.path.join(out_dir, kraken_table),
+                            sep="\t", header=None, names=kraken_colNames,
+                            index_col=False)
+    # open kaiju result file
+    kaiju_seq_data = pd.read_csv(os.path.join(out_dir, kaiju_table),
+                            sep="\t", header=None, names=kaiju_colNames,
+                            index_col=False)
+    # check if same number of row a.k.a. number of reads beetween kraken kaiju
+    # TODO if not, exit(1) with warning
+    if len(kraken_seq_data.index) !=  len(kaiju_seq_data.index):
+        print("WARNING: kraken and kaiju don't have the same number of reads processed")
+    # all result on one table                        
+    kodoja_seq_data = pd.merge(kraken_seq_data, kaiju_seq_data, on="Seq_ID", how="outer")
+    
+    # open pickle file
+    with open(os.path.join(out_dir, "ids1.pkl"), "rb") as id_dict:
+        ids1 = pickle.load(id_dict)
+    # add the reads name in a new column
+    kodoja_seq_data["Seq_ID_initial"] = kodoja_seq_data["Seq_ID"].map(ids1)
 
-        table_summary = pd.DataFrame(columns=['Original_query_taxid','family', 'genus',
-                                            'species', 'NBreads_either', 'NBreads_common', 
-                                            'NBreads_kaiju', 'NBreads_kraken'])
-        # for each taxID found by either kraken or kaiju
-        for taxid, nbreads in either_class.items():
-            results = list()
-            results.append(taxid)
-            # get rank
-            ranks = get_desired_ranks(taxid, desired_ranks, either_class)
-            for key, rank in ranks.items():
-                if rank != '<not present>':
-                    results.append(list(ncbi.get_taxid_translator([rank]).values())[0])
-                else:
-                    results.append(rank)
+    kodoja_format_seq_data, virus_table, tax_name_id_path_all= format_result_table(kodoja_seq_data, host_subset)
+   
+    #TODO faire ca
+    os.remove(os.path.join(out_dir, "ids1.pkl"))
+    os.remove(os.path.join(out_dir, "ids2.pkl"))
 
-            switch=True
-            for key, NBreads in combined_class.items():
-                if key == taxid:
-                    nb_common = NBreads
-                    switch = False
-                    break
-                if switch:
-                    nb_common = 0
+    kodoja_format_seq_data.to_csv(os.path.join(out_dir, "kodoja_VRL.tsv"),
+                   sep="\t", index=False)
+    virus_table.to_csv(os.path.join(out_dir, "virus_table.tsv"),
+                   sep="\t", index=False)
 
-            # NBreads_either
-            results.append(nbreads - nb_common)
-            # NBreads_common
-            results.append(nb_common)
-            # NBreads_kaiju
-            results=add_NBreads(kaiju_class, taxid, results)
-            # NBreads_kraken
-            results=add_NBreads(kraken_class, taxid, results)
+    # NOTE store this for further analysis
+    #12182: {'superkingdom': {10239: 'Viruses'}, ... 'species': {12182: 'Potato aucuba mosaic virus'}}
+    with open(os.path.join(out_dir, "Additional_taxonomic_prediction.json"), 'w') as file:
+        file.write(json.dumps(tax_name_id_path_all)) # use `json.loads` to do the reverse     
+    kodoja_seq_data.to_csv(os.path.join(out_dir, "Additional_all_data.tsv"),
+                sep="\t", index=False)     
 
-            df_result = pd.Series(results, index = table_summary.columns )
-            table_summary = table_summary.append(df_result, ignore_index=True)
-
-        # TODO improve virus_table add genus/family level
-        table_summary.to_csv(os.path.join(out_dir, 'virus_table.tsv'),
-                                sep='\t', index=False)
-
-        # def genus_seq_count(dict_class):
-        #     genus_dict = {}
-        #     for key, value in genus_taxid.items():
-        #         seq_sum = 0
-        #         for taxid in value:
-        #             if taxid in dict_class:
-        #                 seq_sum += dict_class[taxid]
-        #         genus_dict[key] = seq_sum
-        #     return genus_dict
-
-        # genus_either = genus_seq_count(either_class)
-        # genus_combined = genus_seq_count(combined_class)
-
-        # table_summary = pd.DataFrame(columns=['Species', 'Species TaxID',
-        #                                         'Species sequences',
-        #                                         'Species sequences (stringent)',
-        #                                         'Genus',
-        #                                         'Genus sequences',
-        #                                         'Genus sequences (stringent)'])
-        # table_summary['Species TaxID'] = [int(key) for key in levels_tax]
-        # table_summary['Species sequences'] = table_summary['Species TaxID'].map(either_class)
-        # table_summary['Species sequences (stringent)'] = table_summary['Species TaxID'].map(combined_class)
-        # table_summary['Species'] = table_summary['Species TaxID'].map(species_dict)
-        # table_summary['Genus'] = table_summary['Species TaxID'].map(genus_per_species)
-        # Using functions in map to set default value of 0,
-        # can use a defaultdict or Counter if have pandas 0.20 onwards
-        # table_summary['Genus sequences'] = table_summary['Genus'].map(lambda g: genus_either.get(g, 0))
-        # table_summary['Genus sequences (stringent)'] = table_summary['Genus'].map(lambda g: genus_combined.get(g, 0))
-        # TODO improve virus_table add genus/family level
-        # if hasattr(table_summary, 'sort_values'):
-        #     # pandas 0.17 onwards
-        #     table_summary.sort_values(['Species sequences (stringent)', 'Species sequences'],
-        #                                 ascending=False, inplace=True)
-        # else:
-        #     table_summary.sort(['Species sequences (stringent)', 'Species sequences'],
-        #                         ascending=False, inplace=True)
-        # table_summary.to_csv(os.path.join(out_dir, 'test_virus_table.txt'),
-        #                        sep='\t', index=False)
-    virusSummary(kodoja)
+    #TODO write genus_taxid.pkl for kodoja_retrieve 
+    # diagnostic_moduleOLD l443

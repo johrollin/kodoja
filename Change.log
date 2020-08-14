@@ -5,8 +5,10 @@
 - add krona output DONE
 - remove pkl file (ids1.pkl, ids2.pkl) https://github.com/abaizan/kodoja/pull/28 DONE
 - examine result from both analysis part and correct/improve virus_table.txt generation DONE (species only) 
-- examine result from both analysis part at genus/family level
-- check default parameters for kaiju and kraken (kaiju seems more stringent than kraken) (see diagnostic_modules.py l 378)
-- add inconsistancies flag to explore for new virus detection
-- what to do with dark matter ?
-- adapt build database part to kraken2
+- examine result from both analysis part at genus/family level => all information stored in .json file DONE
+- check default parameters for kaiju and kraken (kaiju seems more stringent than kraken) (see diagnostic_modules.py l 378) DONE 
+- add inconsistancies flag to explore for new virus detection => all information stored in .json file
+- what to do with dark matter ? => add "Unassigned" to the main result file 
+- make kodoja_retrieve work again (genus_taxid.pkl is missing now ....)
+- make kodoja_retrieve able to extract "Unassigned" (reads without result) 
+- adapt build database part to kraken2 (also read_table is deprecated kodoja_build.py:96)

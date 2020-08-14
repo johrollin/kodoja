@@ -65,9 +65,9 @@ def main():
                         help='Only subset sequences identified by both tools')
     args = parser.parse_args()
 
-    table_summary = pd.read_csv(os.path.join(args.file_dir, "virus_table.txt"), sep="\t", header=0,
+    table_summary = pd.read_csv(os.path.join(args.file_dir, "virus_table.tsv"), sep="\t", header=0,
                                 index_col=False)
-    kodoja_vrl = pd.read_csv(os.path.join(args.file_dir, "kodoja_VRL.txt"), sep="\t", header=0,
+    kodoja_vrl = pd.read_csv(os.path.join(args.file_dir, "kodoja_VRL.tsv"), sep="\t", header=0,
                              index_col=False).fillna('')
     args.file_dir += check_path(args.file_dir)
     output_dir = os.path.join(args.file_dir, "subset_files/")

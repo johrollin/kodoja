@@ -12,10 +12,9 @@ from diagnostic_modules import test_format
 from diagnostic_modules import check_file
 from diagnostic_modules import fastqc_trim
 from diagnostic_modules import kraken_classify
-from diagnostic_modules import seq_reanalysis
 from diagnostic_modules import kaiju_classify
-from diagnostic_modules import result_analysis
 from diagnostic_modules import add_krona_representation
+from diagnostic_modules import result_comparaison
 
 help_text = """Kodoja Search is a tool intended to identify viral sequences
 in a FASTQ/FASTA sequencing run by matching them against both Kraken and
@@ -77,10 +76,10 @@ parser.add_argument('-l', '--kaiju_minlen', type=int, default=15,
 parser.add_argument('-i', '--kaiju_mismatch', type=int, default=1,
                     help='Kaju allowed mismatches')
 parser.add_argument('-mm', '--memory', default=False, action='store_true',
-                    help='kraken --memory-mapping for big database')
+                    help='kraken --memory-mapping for big database')                
 args = parser.parse_args()
 
-# Check that dirs have "/" at the end
+# Check that dirs have "/" at the end  
 args.output_dir += check_path(args.output_dir)
 args.kraken_db += check_path(args.kraken_db)
 args.kaiju_db += check_path(args.kaiju_db)
@@ -117,7 +116,6 @@ with open(log_filename, "w") as log_file:
                       args.kraken_db, args.kraken_quick,
                       args.kaiju_db, args.kaiju_minlen, args.kaiju_score,
                       args.kaiju_mismatch, args.memory))
-
 
 # TODO: Review this and consider using Python standard library's logging module
 def log(message):
@@ -175,24 +173,18 @@ def main():
     # Make krona representation
     log("Make krona html display\n")
     add_krona_representation(args.output_dir)
-    
     t5 = time.time()
-    #Formating kraken2 result
-    log("Formating Kraken results\n")
-    seq_reanalysis("kraken_table.txt", "kraken_labels.txt", args.output_dir,
-                args.data_format, kraken_file1, kraken_file2)
-    t6 = time.time()
+
     # Merge results
     log("Analyzing Kraken and Kaiju results\n")
-    result_analysis(args.output_dir, "kraken_VRL.txt", args.host_subset)
-    
-    t7 = time.time()
+    result_comparaison(args.output_dir, "kraken_table.txt",  "kaiju_table.txt", args.host_subset)
+    t6 = time.time()
 
     # Create log file
     if args.host_subset:
-        print_statment = "subset sequences = %0.1f min\n" % ((t6 - t5) / 60)
+        print_statment = "comparing result and subset sequences = %0.1f h\n" % ((t6 - t5) / 3600)
     else:
-        print_statment = "formatting kraken data = %0.1f min" % ((t6 - t5) / 60)
+        print_statment = "comparing result data = %0.1f h" % ((t6 - t5) / 3600)
 
     log("Script timer:\n"
         "testing format/replace seqID = %0.1f s\n"
@@ -201,7 +193,6 @@ def main():
         "kaiju classification = %0.1f h\n"
         "krona html representation = %0.1f m\n"
         "%s\n"
-        "Results = %0.1f h\n"
         "total = %0.1f h\n"
         % (t1 - t0,
            (t2 - t1) / 60,
@@ -209,8 +200,7 @@ def main():
            (t4 - t3) / 3600,
            (t5 - t4) / 60,
            print_statment,
-           (t7 - t6) / 3600,
-           (t7 - t0) / 3600))
+           (t6 - t0) / 3600))
 
     log("\nkodoja_search.py finished sucessfully.\n")
 
